@@ -2,7 +2,6 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { uniq } from "lodash";
 import { Player } from "./types/Player";
-import { Gamestate } from "./types/Gamestate";
 
 const app = admin.initializeApp();
 
@@ -17,58 +16,45 @@ export const voteForCard = functions.https.onRequest(
 //Trigger on vote change in public gamestate
 export const revealCard = functions
   .region("europe-west1")
-  .firestore.document("players/{playerId}")
+  .firestore.document("lobbies/{lobbyId}/players/{playerId}")
   .onUpdate(async (change, context) => {
-    // @ts-ignore
-    if (!change.after.data().chosenCard) {
-      console.log("nothing to do, chosenCard is empty");
+    console.log("starting revealCard");
+    const updatedPlayer = change.after.data();
+    if (!updatedPlayer.vote) {
+      console.log("nothing to do, vote is empty");
+      return;
     }
-
-    const gamestateResult = await getGamestateById("2fFWeq0DIlBFbE8YZMEM");
-    const currentTeam = gamestateResult.currentTeam;
-    let currentTeamPlayers = [];
-    if (currentTeam === 0) {
-      currentTeamPlayers = gamestateResult.team0players;
-    } else {
-      currentTeamPlayers = gamestateResult.team1players;
+    const lobbyId = context.params.lobbyId;
+    const players = await getPlayersByLobbyAndTeam(lobbyId, updatedPlayer.team);
+    const votes = players.map((player) => player.vote);
+    if (votes.length < players.length) {
+      console.log("not enough players have voted");
+      return;
     }
-
-    const players = [];
-    for (const playerId in currentTeamPlayers) {
-      const player = await getPlayerById(playerId);
-      players.push(player);
-    }
-
-    let chosenCards = players.map((player) => player.chosenCard);
-    if (chosenCards.length < currentTeamPlayers.length) {
-      console.log("not enough players have chosen cards");
+    let uniqVotes = uniq(votes);
+    if (uniqVotes.length > 1) {
+      console.log("not all players voted for the same action");
       return;
     }
 
-    let uniqChosenCards = uniq(chosenCards);
-    if (uniqChosenCards.length > 1) {
-      console.log("not all players voted for the same card");
-      return;
-    }
+    const chosenAction = uniqVotes[0];
+    console.log("players voted for action " + chosenAction);
 
-    const chosenCard = uniqChosenCards[0];
-
-    if (!chosenCard) {
-      console.log("card undefined");
+    if (!chosenAction) {
+      console.log("action undefined");
       return;
-    }
-    if (chosenCard === -1) {
+    } else if (chosenAction === "skip") {
+      const currentTeam = await getCurrentTeam(lobbyId);
+      console.log(currentTeam);
       //TODO: skip round
       console.log("skipping round");
-      return;
-    }
-    const MAX_CARD_ID = 19;
-    if (chosenCard > MAX_CARD_ID) {
-      console.log("invalid card chosen");
-      return;
-    }
 
-    //TODO: reveal card color
+      return;
+    } else {
+      //TODO: reveal card color
+      console.log("revealing color for card " + chosenAction);
+      return;
+    }
   });
 
 export const addHint = functions.https.onRequest(async (request, response) => {
@@ -77,22 +63,39 @@ export const addHint = functions.https.onRequest(async (request, response) => {
   //append hint to hints of players team
 });
 
-const getPlayerById = async (playerId: string): Promise<Player> => {
-  const player = (
-    await app.firestore().collection("players").doc(playerId).get()
-  ).data();
-  if (!player) {
-    throw new Error("no player found!");
+// const getPlayerById = async (playerId: string): Promise<Player> => {
+//   const player = (
+//     await app.firestore().collection("players").doc(playerId).get()
+//   ).data();
+//   if (!player) {
+//     throw new Error("no player found!");
+//   }
+//   return player as Player;
+// };
+
+const getPlayersByLobbyAndTeam = async (
+  lobbyId: string,
+  team: string
+): Promise<Player[]> => {
+  const snapshot = await app
+    .firestore()
+    .collection("lobbies/" + lobbyId + "/players")
+    .where("team", "==", team)
+    .get();
+  if (!snapshot || snapshot.size == 0) {
+    throw new Error("no players found for lobby " + lobbyId);
   }
-  return player as Player;
+  return snapshot.docs.map((doc) => doc.data()) as Player[];
 };
 
-const getGamestateById = async (gamestateId: string): Promise<Gamestate> => {
-  const gamestateResult = (
-    await app.firestore().collection("gamestate").doc(gamestateId).get()
-  ).data();
-  if (!gamestateResult) {
-    throw new Error("no gamestate found!");
-  }
-  return gamestateResult as Gamestate;
+const getCurrentTeam = async (lobbyId: string): Promise<String> => {
+  const snapshot = await app
+    .firestore()
+    .collection("lobbies")
+    .doc(lobbyId)
+    .get();
+
+  console.log({ snapshot });
+  // return snapshot.docs.map((doc) => doc.data()) as Player[];
+  return "foo";
 };

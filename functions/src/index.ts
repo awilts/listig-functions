@@ -13,15 +13,35 @@ export const voteForCard = functions.https.onRequest(
   }
 );
 
+async function revealCard(cardId: string, lobbyId: string) {
+  console.log("revealing color for card " + cardId);
+
+  let snapshot = await app
+    .firestore()
+    .doc(`lobbies/${lobbyId}/wordOwners/${cardId}`)
+    .get();
+
+  if (!snapshot) {
+    throw new Error("no wordOwner found with id " + cardId);
+  }
+  // @ts-ignore
+  const team = snapshot.data().team;
+  await app
+    .firestore()
+    .doc(`lobbies/${lobbyId}/words/${cardId}`)
+    .update({ team: team });
+  return;
+}
+
 //Trigger on vote change in public gamestate
-export const revealCard = functions
+export const handleVoteChange = functions
   .region("europe-west1")
   .firestore.document("lobbies/{lobbyId}/players/{playerId}")
   .onUpdate(async (change, context) => {
     console.log("starting revealCard");
     const updatedPlayer = change.after.data();
     if (!updatedPlayer.vote) {
-      console.log("nothing to do, vote is empty");
+      console.log("nothing to do, votingResult is empty");
       return;
     }
     const lobbyId = context.params.lobbyId;
@@ -36,35 +56,17 @@ export const revealCard = functions
       console.log("not all players voted for the same action");
       return;
     }
-
-    const chosenAction = uniqVotes[0];
-    console.log("players voted for action " + chosenAction);
-
-    if (!chosenAction) {
+    const votingResult = uniqVotes[0];
+    console.log("players voted for action " + votingResult);
+    if (!votingResult) {
       console.log("action undefined");
       return;
-    } else if (chosenAction === "skip") {
+    } else if (votingResult === "skip") {
       await skipTurn(lobbyId);
       await resetVotes(players, lobbyId);
       return;
     } else {
-      console.log("revealing color for card " + chosenAction);
-
-      let snapshot = await app
-        .firestore()
-        .doc(`lobbies/${lobbyId}/wordOwners/${chosenAction}`)
-        .get();
-
-      if (!snapshot) {
-        throw new Error("no wordOwner found with id " + chosenAction);
-      }
-      // @ts-ignore
-      const team = snapshot.data().team;
-      await app
-        .firestore()
-        .doc(`lobbies/${lobbyId}/words/${chosenAction}`)
-        .update({ team: team });
-      return;
+      await revealCard(votingResult, lobbyId);
     }
   });
 

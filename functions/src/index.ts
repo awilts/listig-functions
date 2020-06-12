@@ -48,8 +48,22 @@ export const revealCard = functions
       await resetVotes(players, lobbyId);
       return;
     } else {
-      //TODO: reveal card color
       console.log("revealing color for card " + chosenAction);
+
+      let snapshot = await app
+        .firestore()
+        .doc(`lobbies/${lobbyId}/wordOwners/${chosenAction}`)
+        .get();
+
+      if (!snapshot) {
+        throw new Error("no wordOwner found with id " + chosenAction);
+      }
+      // @ts-ignore
+      const team = snapshot.data().team;
+      await app
+        .firestore()
+        .doc(`lobbies/${lobbyId}/words/${chosenAction}`)
+        .update({ team: team });
       return;
     }
   });

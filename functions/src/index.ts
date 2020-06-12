@@ -44,11 +44,8 @@ export const revealCard = functions
       console.log("action undefined");
       return;
     } else if (chosenAction === "skip") {
-      const currentTeam = await getCurrentTeam(lobbyId);
-      console.log(currentTeam);
-      //TODO: skip round
-      console.log("skipping round");
-
+      await skipTurn(lobbyId);
+      await resetVotes(players, lobbyId);
       return;
     } else {
       //TODO: reveal card color
@@ -63,29 +60,25 @@ export const addHint = functions.https.onRequest(async (request, response) => {
   //append hint to hints of players team
 });
 
-// const getPlayerById = async (playerId: string): Promise<Player> => {
-//   const player = (
-//     await app.firestore().collection("players").doc(playerId).get()
-//   ).data();
-//   if (!player) {
-//     throw new Error("no player found!");
-//   }
-//   return player as Player;
-// };
-
 const getPlayersByLobbyAndTeam = async (
   lobbyId: string,
   team: string
 ): Promise<Player[]> => {
   const snapshot = await app
     .firestore()
-    .collection("lobbies/" + lobbyId + "/players")
+    .collection(`lobbies/${lobbyId}/players`)
     .where("team", "==", team)
     .get();
   if (!snapshot || snapshot.size == 0) {
     throw new Error("no players found for lobby " + lobbyId);
   }
-  return snapshot.docs.map((doc) => doc.data()) as Player[];
+  const players: Player[] = [];
+  snapshot.docs.map((doc) => {
+    const player = doc.data() as Player;
+    player.id = doc.id;
+    players.push(player);
+  });
+  return players;
 };
 
 const getCurrentTeam = async (lobbyId: string): Promise<String> => {
@@ -95,7 +88,37 @@ const getCurrentTeam = async (lobbyId: string): Promise<String> => {
     .doc(lobbyId)
     .get();
 
-  console.log({ snapshot });
-  // return snapshot.docs.map((doc) => doc.data()) as Player[];
-  return "foo";
+  const data = snapshot.data();
+  if (!data) {
+    throw new Error("no lobby found with id " + lobbyId);
+  }
+  return data.currentTeam;
 };
+
+async function resetVotes(players: Player[], lobbyId: string) {
+  const tasks: Promise<any>[] = [];
+  players.forEach((player) => {
+    tasks.push(
+      app
+        .firestore()
+        .doc(`lobbies/${lobbyId}/players/${player.id}`)
+        .update({ vote: "" })
+    );
+  });
+  return Promise.all(tasks);
+}
+
+async function skipTurn(lobbyId: string) {
+  console.log("skipping turn");
+  const currentTeam = await getCurrentTeam(lobbyId);
+  let nextTeam;
+  if (currentTeam === "blue") {
+    nextTeam = "red";
+  } else {
+    nextTeam = "blue";
+  }
+  await app
+    .firestore()
+    .doc(`lobbies/${lobbyId}`)
+    .update({ currentTeam: nextTeam });
+}

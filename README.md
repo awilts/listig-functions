@@ -18,6 +18,7 @@
         - position
         - text
         - team
+    - currentTeam
     - timer (?)
 - hidden game state
     - owners of unrevealed cards
@@ -73,6 +74,12 @@
                     team: red 
                 }
             }
+            currentTeam: red
         }
     }
 
+
+
+#### Test functions via:
+
+npm run start:all

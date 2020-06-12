@@ -5,7 +5,7 @@ import { Player } from "./types/Player";
 
 const app = admin.initializeApp();
 
-export const voteForCard = functions.https.onCall(async (data, context) => {
+export const changeVote = functions.https.onCall(async (data, context) => {
   // @ts-ignore
   const uid = context.auth.uid;
 
@@ -13,9 +13,9 @@ export const voteForCard = functions.https.onCall(async (data, context) => {
   if (!lobbyId) {
     throw new Error("invalid lobbyId " + lobbyId);
   }
-  const wordId = data.wordId as string;
-  if (!wordId) {
-    throw new Error("invalid wordId " + wordId);
+  const vote = data.vote as string;
+  if (!vote) {
+    throw new Error("invalid vote " + vote);
   }
   let existingPlayer = await getPlayerByLobbyAndId(lobbyId, uid);
   if (!existingPlayer) {
@@ -25,7 +25,7 @@ export const voteForCard = functions.https.onCall(async (data, context) => {
   await app
     .firestore()
     .doc(`lobbies/${lobbyId}/players/${uid}`)
-    .update({ vote: wordId });
+    .update({ vote: vote });
 
   return "Player voting for card...";
 });

@@ -5,13 +5,53 @@ import { Player } from "./types/Player";
 
 const app = admin.initializeApp();
 
-export const voteForCard = functions.https.onRequest(
-  async (request, response) => {
-    //set chosenCard for player in public gamestate
+export const voteForCard = functions.https.onCall(async (data, context) => {
+  // @ts-ignore
+  const uid = context.auth.uid;
 
-    response.send("Player voting for card...");
+  const lobbyId = data.lobbyId as string;
+  if (!lobbyId) {
+    throw new Error("invalid lobbyId " + lobbyId);
   }
-);
+  const wordId = data.wordId as string;
+  if (!wordId) {
+    throw new Error("invalid wordId " + wordId);
+  }
+  let existingPlayer = await getPlayerByLobbyAndId(lobbyId, uid);
+  if (!existingPlayer) {
+    throw new Error("player " + uid + " not found in lobby " + lobbyId);
+  }
+
+  await app
+    .firestore()
+    .doc(`lobbies/${lobbyId}/players/${uid}`)
+    .update({ vote: wordId });
+
+  return "Player voting for card...";
+});
+
+export const joinGame = functions.https.onCall(async (data, context) => {
+  // @ts-ignore
+  const uid = context.auth.uid;
+  // @ts-ignore
+  const name = context.auth.token.name || null;
+  const player: Player = {
+    vote: "",
+    team: "red",
+    name: name,
+    color: "grey",
+  };
+  const lobbyId = data.lobbyId as string;
+  if (!lobbyId) {
+    throw new Error("invalid lobbyId " + lobbyId);
+  }
+  let existingPlayer = await getPlayerByLobbyAndId(lobbyId, uid);
+  if (existingPlayer) {
+    throw new Error("player " + uid + " already joined lobby " + lobbyId);
+  }
+  await app.firestore().doc(`lobbies/${lobbyId}/players/${uid}`).create(player);
+  return "successfully joined game";
+});
 
 async function revealCard(cardId: string, lobbyId: string) {
   console.log("revealing color for card " + cardId);
@@ -95,6 +135,22 @@ const getPlayersByLobbyAndTeam = async (
     players.push(player);
   });
   return players;
+};
+
+const getPlayerByLobbyAndId = async (
+  lobbyId: string,
+  playerId: string
+): Promise<Player | undefined> => {
+  const snapshot = await app
+    .firestore()
+    .doc(`lobbies/${lobbyId}/players/${playerId}`)
+    .get();
+  if (!snapshot || !snapshot.data()) {
+    return undefined;
+  }
+  const player = snapshot.data() as Player;
+  player.id = snapshot.id;
+  return player;
 };
 
 const getCurrentTeam = async (lobbyId: string): Promise<String> => {

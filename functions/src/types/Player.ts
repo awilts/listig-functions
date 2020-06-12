@@ -1,6 +1,7 @@
 export type Player = {
-  id: string;
+  id?: string;
   name: string;
   team: string;
+  color: string;
   vote?: string;
 };

@@ -83,3 +83,5 @@
 #### Test functions via:
 
 npm run start:all
+
+open independent firefox session via terminal: nohup firefox -no-remote -P "1" &

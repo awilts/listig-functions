@@ -34,27 +34,43 @@ export const changeVote = functions.https.onCall(async (data, context) => {
   return "Player voting for card...";
 });
 
-export const joinGame = functions.https.onCall(async (data, context) => {
+export const joinTeam = functions.https.onCall(async (data, context) => {
   // @ts-ignore
   const uid = context.auth.uid;
   // @ts-ignore
   const name = context.auth.token.name || null;
-  const player: Player = {
-    vote: "",
-    team: "red",
-    name: name,
-    color: "grey",
-  };
   const lobbyId = data.lobbyId as string;
   if (!lobbyId) {
     throw new Error("invalid lobbyId " + lobbyId);
   }
+  const team = data.team as string;
+  if (!team) {
+    throw new Error("invalid team " + team);
+  }
+  const player: Player = {
+    vote: "",
+    team: team,
+    name: name,
+    color: "grey",
+  };
   let existingPlayer = await getPlayerByLobbyAndId(lobbyId, uid);
   if (existingPlayer) {
-    throw new Error("player " + uid + " already joined lobby " + lobbyId);
+    if (existingPlayer.team === team) {
+      throw new Error(
+        `player ${uid} already joined team ${team} in lobby ${lobbyId}`
+      );
+    }
+    await app
+      .firestore()
+      .doc(`lobbies/${lobbyId}/players/${uid}`)
+      .update({ team: team });
+  } else {
+    await app
+      .firestore()
+      .doc(`lobbies/${lobbyId}/players/${uid}`)
+      .create(player);
   }
-  await app.firestore().doc(`lobbies/${lobbyId}/players/${uid}`).create(player);
-  return "successfully joined game";
+  return `successfully joined team ${team}`;
 });
 
 async function revealCard(cardId: string, lobbyId: string) {

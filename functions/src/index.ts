@@ -2,6 +2,7 @@ import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { uniq } from "lodash";
 import { Player } from "./types/Player";
+import { Hint } from "./types/Hint";
 
 const app = admin.initializeApp();
 
@@ -17,11 +18,14 @@ export const changeVote = functions.https.onCall(async (data, context) => {
   if (!vote) {
     throw new Error("invalid vote " + vote);
   }
-  let existingPlayer = await getPlayerByLobbyAndId(lobbyId, uid);
-  if (!existingPlayer) {
+  let player = await getPlayerByLobbyAndId(lobbyId, uid);
+  if (!player) {
     throw new Error("player " + uid + " not found in lobby " + lobbyId);
   }
-
+  const currentTeam = await getCurrentTeam(lobbyId);
+  if (player.team !== currentTeam) {
+    throw new Error("player " + uid + " is playing out of turn in " + lobbyId);
+  }
   await app
     .firestore()
     .doc(`lobbies/${lobbyId}/players/${uid}`)
@@ -110,10 +114,33 @@ export const handleVoteChange = functions
     }
   });
 
-export const addHint = functions.https.onRequest(async (request, response) => {
-  //check if player is code-guide
-  //check if player is in current team
-  //append hint to hints of players team
+export const addHint = functions.https.onCall(async (data, context) => {
+  // @ts-ignore
+  const uid = context.auth.uid;
+  const lobbyId = data.lobbyId as string;
+  if (!lobbyId) {
+    throw new Error("invalid lobbyId " + lobbyId);
+  }
+  if (!data.hintText || data.hintText === "") {
+    //TODO: Add further validation
+    throw new Error(`no valid hint given`);
+  }
+  const player = await getPlayerByLobbyAndId(lobbyId, uid);
+  if (!player) {
+    throw new Error(`player ${uid} not found in lobby ${lobbyId}`);
+  }
+  if (player.guide !== "true") {
+    throw new Error(`player ${uid} is not guide in lobby ${lobbyId}`);
+  }
+  const currentTeam = await getCurrentTeam(lobbyId);
+  if (player.team !== currentTeam) {
+    throw new Error(`player ${uid} is playing out of turn in ${lobbyId}`);
+  }
+  const hint: Hint = {
+    text: data.hintText,
+    team: player.team,
+  };
+  await app.firestore().collection(`lobbies/${lobbyId}/hints/`).add(hint);
 });
 
 const getPlayersByLobbyAndTeam = async (

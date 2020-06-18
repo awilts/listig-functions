@@ -4,4 +4,6 @@ export type Player = {
   team: string;
   color: string;
   vote?: string;
+  host?: string;
+  guide?: string;
 };

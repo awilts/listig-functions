@@ -34,6 +34,38 @@ export const changeVote = functions.https.onCall(async (data, context) => {
   return "Player voting for card...";
 });
 
+export const startGame = functions.https.onCall(async (data, context) => {
+  // @ts-ignore
+  const uid = context.auth.uid;
+  const lobbyId = data.lobbyId as string;
+  if (!lobbyId) {
+    throw new Error("invalid lobbyId " + lobbyId);
+  }
+  let player = await getPlayerByLobbyAndId(lobbyId, uid);
+  if (!player) {
+    throw new Error("player " + uid + " not found in lobby " + lobbyId);
+  }
+  if (player.host !== "true") {
+    throw new Error("player " + uid + " is not host in lobby " + lobbyId);
+  }
+
+  //Start game
+  let teamWithFirstTurn;
+  let number = Math.random();
+  if (number < 0.5) {
+    teamWithFirstTurn = "blue";
+  } else {
+    teamWithFirstTurn = "red";
+  }
+
+  await app
+    .firestore()
+    .doc(`lobbies/${lobbyId}`)
+    .update({ currentTeam: teamWithFirstTurn });
+
+  return "starting game...";
+});
+
 export const joinTeam = functions.https.onCall(async (data, context) => {
   // @ts-ignore
   const uid = context.auth.uid;

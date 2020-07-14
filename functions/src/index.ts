@@ -66,6 +66,47 @@ export const startGame = functions.https.onCall(async (data, context) => {
   return "starting game...";
 });
 
+export const forceAdvanceGame = functions.https.onCall(
+  async (data, context) => {
+    // @ts-ignore
+    const uid = context.auth.uid;
+    const lobbyId = data.lobbyId as string;
+    if (!lobbyId) {
+      throw new Error("invalid lobbyId " + lobbyId);
+    }
+    let player = await getPlayerByLobbyAndId(lobbyId, uid);
+    if (!player) {
+      throw new Error("player " + uid + " not found in lobby " + lobbyId);
+    }
+    if (player.host !== "true") {
+      throw new Error("player " + uid + " is not host in lobby " + lobbyId);
+    }
+    const currentTeam = await getCurrentTeam(lobbyId);
+    const players = await getPlayersByLobbyAndTeam(lobbyId, currentTeam);
+    const votes = players.map((player) => player.vote);
+    if (votes.length < players.length) {
+      console.log("not enough players have voted");
+      return;
+    }
+    console.log(votes);
+    const nonEmptyVotes = votes.filter((vote) => vote !== "");
+    let uniqVotes = uniq(nonEmptyVotes);
+    const votingResult = uniqVotes[0];
+    if (!votingResult) {
+      console.log("action undefined");
+      return;
+    } else if (votingResult === "skip") {
+      await skipTurn(lobbyId);
+      await resetVotes(players, lobbyId);
+      return;
+    } else {
+      await revealCard(votingResult, lobbyId);
+      await resetVotes(players, lobbyId);
+    }
+    return "successfully ended round";
+  }
+);
+
 export const joinTeam = functions.https.onCall(async (data, context) => {
   // @ts-ignore
   const uid = context.auth.uid;
@@ -130,7 +171,7 @@ export const handleVoteChange = functions
   .region("europe-west1")
   .firestore.document("lobbies/{lobbyId}/players/{playerId}")
   .onUpdate(async (change, context) => {
-    console.log("starting revealCard");
+    console.log("starting handleVoteChange");
     const updatedPlayer = change.after.data();
     if (!updatedPlayer.vote) {
       console.log("nothing to do, votingResult is empty");
@@ -159,6 +200,7 @@ export const handleVoteChange = functions
       return;
     } else {
       await revealCard(votingResult, lobbyId);
+      await resetVotes(players, lobbyId);
     }
   });
 
@@ -228,7 +270,7 @@ const getPlayerByLobbyAndId = async (
   return player;
 };
 
-const getCurrentTeam = async (lobbyId: string): Promise<String> => {
+const getCurrentTeam = async (lobbyId: string): Promise<string> => {
   const snapshot = await app
     .firestore()
     .collection("lobbies")

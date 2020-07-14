@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /players/{player} {
+      allow read: if request.auth != null;
+    }
+    match /players/{player} {
+    	allow create, update, delete: if request.auth.uid == player;
+  	}
+    match /items/{item} {
+      allow read: if request.auth != null;
+    }
+    match /words/{word} {
+      allow read: if request.auth != null;
+    }
+    match /lobbies/{lobby=**} {
+      allow read, create, update, delete: if request.auth != null;
+    }
+  }
+}
+ 
